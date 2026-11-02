@@ -1,0 +1,185 @@
+' DM Compare Tool — Developed by Perry Dave V. Geron
+Option Explicit
+Private mLoading As Boolean
+
+Private Sub UserForm_Initialize()
+    Me.Caption = "DM Compare Tool v3.1 | Developed by Perry Dave V. Geron"
+    ' Ensure the form is large enough even when Excel uses a different DPI.
+    Me.Width = 520
+    Me.Height = 350
+
+     ' FORM BACKGROUND AND FONT
+    Me.BackColor = &H00FBF7F4&
+    Me.Font.Name = "Segoe UI"
+    Me.Font.Size = 10
+
+    ' FILE A TITLE
+    With Me.lblTitleA
+        .BackStyle = fmBackStyleOpaque
+        .BackColor = &H00533118&
+        .ForeColor = &H00FFFFFF&
+        .Font.Name = "Segoe UI"
+        .Font.Size = 11
+        .Font.Bold = True
+    End With
+
+    ' FILE B TITLE
+    With Me.lblTitleB
+        .BackStyle = fmBackStyleOpaque
+        .BackColor = &H00533118&
+        .ForeColor = &H00FFFFFF&
+        .Font.Name = "Segoe UI"
+        .Font.Size = 11
+        .Font.Bold = True
+    End With
+
+    ' COMPARE BUTTON
+    With Me.btnCompare
+        .BackColor = &H00533118&
+        .ForeColor = &H00FFFFFF&
+        .Font.Name = "Segoe UI"
+        .Font.Size = 11
+        .Font.Bold = True
+        .Caption = "Compare Files"
+    End With
+
+    ' DEFAULT VALUES
+  
+    mLoading = True
+    Me.txtHeaderA.Text = "1"
+    Me.txtStartA.Text = "2"
+    Me.txtHeaderB.Text = "1"
+    Me.txtStartB.Text = "2"
+    Me.lblNote.Caption = "Choose both files, set the header/data rows, then select one common Unique ID."
+    mLoading = False
+End Sub
+
+Private Sub btnBrowseA_Click()
+    Dim selected As Variant
+    selected = Application.GetOpenFilename( _
+        "Excel Files (*.xlsx;*.xlsm;*.xlsb;*.xls),*.xlsx;*.xlsm;*.xlsb;*.xls", _
+        , "Select File A")
+    If VarType(selected) = vbBoolean Then Exit Sub
+    On Error GoTo Fail
+    mLoading = True
+    Me.txtFileA.Text = CStr(selected)
+    DM_LoadWorksheetNames CStr(selected), Me.cboSheetA
+    mLoading = False
+    RefreshIDs
+    Exit Sub
+Fail:
+    mLoading = False
+    MsgBox "Could not load File A: " & Err.Description, vbExclamation, "DM Compare"
+End Sub
+
+Private Sub btnBrowseB_Click()
+    Dim selected As Variant
+    selected = Application.GetOpenFilename( _
+        "Excel Files (*.xlsx;*.xlsm;*.xlsb;*.xls),*.xlsx;*.xlsm;*.xlsb;*.xls", _
+        , "Select File B")
+    If VarType(selected) = vbBoolean Then Exit Sub
+    On Error GoTo Fail
+    mLoading = True
+    Me.txtFileB.Text = CStr(selected)
+    DM_LoadWorksheetNames CStr(selected), Me.cboSheetB
+    mLoading = False
+    RefreshIDs
+    Exit Sub
+Fail:
+    mLoading = False
+    MsgBox "Could not load File B: " & Err.Description, vbExclamation, "DM Compare"
+End Sub
+
+Private Sub cboSheetA_Change()
+    RefreshIDs
+End Sub
+
+Private Sub cboSheetB_Change()
+    RefreshIDs
+End Sub
+
+Private Sub txtHeaderA_AfterUpdate()
+    RefreshIDs
+End Sub
+
+Private Sub txtHeaderB_AfterUpdate()
+    RefreshIDs
+End Sub
+
+Private Sub btnRefreshIDs_Click()
+    RefreshIDs True
+End Sub
+
+Private Function ReadRow(ByVal textValue As String) As Long
+    Dim n As Double
+    If Len(Trim$(textValue)) = 0 Or Not IsNumeric(textValue) Then Exit Function
+    n = CDbl(textValue)
+    If n < 1 Or n > 1048576 Or n <> Fix(n) Then Exit Function
+    ReadRow = CLng(n)
+End Function
+
+Private Sub RefreshIDs(Optional ByVal showErrors As Boolean = False)
+    Dim oldSelected As String, i As Long, message As String
+    If mLoading Then Exit Sub
+    If Len(Me.txtFileA.Text) = 0 Or Len(Me.txtFileB.Text) = 0 Then Exit Sub
+    If Len(Me.cboSheetA.Value) = 0 Or Len(Me.cboSheetB.Value) = 0 Then Exit Sub
+    If ReadRow(Me.txtHeaderA.Text) = 0 Or ReadRow(Me.txtHeaderB.Text) = 0 Then Exit Sub
+    On Error GoTo Fail
+    mLoading = True
+    oldSelected = Me.cboUniqueID.Value
+    DM_LoadCommonIDs Me.txtFileA.Text, Me.cboSheetA.Value, ReadRow(Me.txtHeaderA.Text), _
+        Me.txtFileB.Text, Me.cboSheetB.Value, ReadRow(Me.txtHeaderB.Text), Me.cboUniqueID
+    For i = 0 To Me.cboUniqueID.ListCount - 1
+        If StrComp(Me.cboUniqueID.List(i), oldSelected, vbTextCompare) = 0 Then
+            Me.cboUniqueID.ListIndex = i
+            Exit For
+        End If
+    Next i
+    If Me.cboUniqueID.ListCount = 1 Then Me.cboUniqueID.ListIndex = 0
+    mLoading = False
+    Exit Sub
+Fail:
+    message = Err.Description
+    mLoading = False
+    Me.cboUniqueID.Clear
+    If showErrors Then MsgBox message, vbExclamation, "DM Compare"
+End Sub
+
+Private Sub btnCompare_Click()
+    Dim hA As Long, hB As Long, dA As Long, dB As Long
+    If Len(Me.txtFileA.Text) = 0 Or Len(Me.txtFileB.Text) = 0 Then
+        MsgBox "Select both Excel files first.", vbExclamation, "DM Compare"
+        Exit Sub
+    End If
+    If Me.cboSheetA.ListIndex < 0 Or Me.cboSheetB.ListIndex < 0 Then
+        MsgBox "Select a worksheet for both files.", vbExclamation, "DM Compare"
+        Exit Sub
+    End If
+    hA = ReadRow(Me.txtHeaderA.Text)
+    hB = ReadRow(Me.txtHeaderB.Text)
+    dA = ReadRow(Me.txtStartA.Text)
+    dB = ReadRow(Me.txtStartB.Text)
+    If hA = 0 Or hB = 0 Or dA <= hA Or dB <= hB Then
+        MsgBox "Please enter valid header/data row numbers. Data must start below the header.", _
+            vbExclamation, "DM Compare"
+        Exit Sub
+    End If
+    If Me.cboUniqueID.ListIndex < 0 Then
+        RefreshIDs True
+        If Me.cboUniqueID.ListIndex < 0 Then
+            MsgBox "Select one common Unique ID from the dropdown.", vbExclamation, "DM Compare"
+            Exit Sub
+        End If
+    End If
+    Me.Hide
+    If DM_RunComparison(Me.txtFileA.Text, Me.cboSheetA.Value, hA, dA, _
+        Me.txtFileB.Text, Me.cboSheetB.Value, hB, dB, Me.cboUniqueID.Value) Then
+        Unload Me
+    Else
+        Me.Show
+    End If
+End Sub
+
+Private Sub btnCancel_Click()
+    Unload Me
+End Sub
